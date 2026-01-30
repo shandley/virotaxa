@@ -75,6 +75,14 @@ data/
 *.tsv
 *.csv
 
+# Virotaxa generated files
+*.metadata.json
+genomes/
+vhdb_latest.*
+
+# Virotaxa cache
+.virotaxa/
+
 # OS
 .DS_Store
 Thumbs.db
