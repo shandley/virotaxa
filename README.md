@@ -9,8 +9,10 @@ Virotaxa provides tools for downloading, filtering, and cataloging viral taxa fr
 ## Features
 
 - **Host-based filtering**: Clinical (human only), pandemic (all vertebrates), or mammal modes
-- **Bacteriophage exclusion**: Removes 26+ phage families and morphotypes
+- **Bacteriophage exclusion**: Removes 30 phage families and morphotypes
 - **Evidence prioritization**: Literature > RefSeq > UniProt
+- **Primate homologs**: Augment catalogs with chimp/bonobo viruses for better capture of high-diversity human viruses
+- **Genome fetching**: Download RefSeq sequences from NCBI for probe design
 - **Version pinning**: Cache VHDB files by SHA256 hash
 - **Reproducibility metadata**: Track all parameters for exact reproduction
 - **Validation**: Verify catalogs against their metadata
@@ -39,6 +41,29 @@ virotaxa catalog build data/vhdb.tsv -o catalog.tsv --mode clinical
 virotaxa catalog build data/vhdb.tsv -o catalog.tsv --mode pandemic
 ```
 
+### Primate Homologs for Better Capture
+
+High-diversity human viruses (HHV-8, HCMV, EBV, HPV) have strains that differ by 20kb+. Adding primate homologs improves probe capture by spanning sequence space:
+
+```bash
+# Add chimp/bonobo homologs (strict mode, +25 viruses)
+virotaxa catalog build data/vhdb.tsv --primate-homologs strict -o catalog.tsv
+
+# Add all primate homologs, filtered to key families
+virotaxa catalog build data/vhdb.tsv --primate-homologs extended \
+  --primate-families Herpesviridae,Papillomaviridae -o catalog.tsv
+```
+
+### Fetch Genome Sequences
+
+```bash
+# Download RefSeq genomes for all taxa in catalog
+virotaxa genome fetch catalog.tsv --email you@example.com -o genomes/
+
+# With NCBI API key for faster downloads (10 req/s vs 3 req/s)
+virotaxa genome fetch catalog.tsv --email you@example.com --api-key YOUR_KEY
+```
+
 ### Version Pinning for Reproducibility
 
 ```bash
@@ -62,7 +87,15 @@ virotaxa catalog validate catalog.tsv
 |------|-------------|---------------|
 | `clinical` | Human hosts only | ~1,400 viruses |
 | `pandemic` | All vertebrate hosts | ~4,000+ viruses |
-| `mammal` | Mammalian hosts only | ~3,000 viruses |
+| `mammal` | Mammalian hosts only | ~3,400 viruses |
+
+## Primate Homolog Modes
+
+| Mode | Description | Added Viruses |
+|------|-------------|---------------|
+| `none` | No primate homologs (default) | — |
+| `strict` | Chimp/bonobo only | +25 to clinical |
+| `extended` | All non-human primates | +56 to clinical |
 
 ## Output Format
 
@@ -85,31 +118,51 @@ taxid   name                        family          order           refseq_ids  
   },
   "parameters": {
     "mode": "clinical",
-    "exclude_bacteriophages": true
+    "exclude_bacteriophages": true,
+    "primate_homologs": "strict"
   },
   "statistics": {
-    "total_taxa": 1088,
+    "total_taxa": 1457,
     "unique_families": 48
   }
 }
 ```
 
+**genomes/ (after genome fetch):**
+```
+genomes/
+├── 11676.fasta          # HIV-1
+├── 11320.fasta          # Influenza A
+├── ...
+└── genomes.metadata.json
+```
+
 ## Python API
 
 ```python
-from virotaxa import build_catalog, download_vhdb
-from virotaxa.cache import cache_download, get_cached
+from virotaxa.catalog.builder import build_catalog
+from virotaxa.vhdb.download import download_vhdb
+from virotaxa.genome import fetch_genomes
 
 # Download VHDB
 vhdb_path = download_vhdb("data/vhdb.tsv")
 
-# Build catalog
-catalog = build_catalog(vhdb_path, mode="clinical")
+# Build catalog with primate homologs
+catalog = build_catalog(
+    vhdb_path,
+    mode="clinical",
+    primate_homologs="strict",
+    primate_families={"Herpesviridae", "Papillomaviridae"},
+)
 print(f"Built catalog with {len(catalog)} viruses")
 
-# Use cached version for reproducibility
-cached_path, hash_value = cache_download()
-catalog = build_catalog(cached_path, mode="pandemic")
+# Fetch genomes
+result = fetch_genomes(
+    catalog_path="catalog.tsv",
+    output_dir="genomes/",
+    email="you@example.com",
+)
+print(f"Fetched {result.successful} sequences")
 ```
 
 ## Filtering Pipeline
@@ -134,7 +187,12 @@ Virus-Host Database
         │
         ▼
 ┌───────────────────────┐
-│ 4. Phage Removal      │  26 families + keywords
+│ 4. Phage Removal      │  30 families + keywords
+└───────────────────────┘
+        │
+        ▼
+┌───────────────────────┐
+│ 5. Primate Homologs   │  Optional: strict/extended
 └───────────────────────┘
         │
         ▼
