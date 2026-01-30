@@ -324,6 +324,16 @@ def catalog_build_cmd(
         "--exclude-bacteriophages/--include-bacteriophages",
         help="Exclude bacteriophage families",
     ),
+    primate_homologs: str = typer.Option(
+        "none",
+        "--primate-homologs",
+        help="Include primate homologs: none, strict (chimp/bonobo), extended (all primates)",
+    ),
+    primate_families: str = typer.Option(
+        None,
+        "--primate-families",
+        help="Comma-separated families for primate homologs (e.g., Herpesviridae,Papillomaviridae)",
+    ),
 ) -> None:
     """Build a viral taxa catalog from VHDB.
 
@@ -332,6 +342,19 @@ def catalog_build_cmd(
       clinical  - Human hosts only (~1,400 viruses)
       pandemic  - All vertebrate hosts (~4,000+ viruses)
       mammal    - Mammalian hosts only
+
+    \b
+    Primate homologs (improves capture of high-diversity viruses):
+      none      - No primate homologs (default)
+      strict    - Chimp/bonobo only (+66 viruses)
+      extended  - All non-human primates (+505 viruses)
+
+    \b
+    Examples:
+      virotaxa catalog build vhdb.tsv --mode clinical
+      virotaxa catalog build vhdb.tsv --primate-homologs strict
+      virotaxa catalog build vhdb.tsv --primate-homologs extended \\
+        --primate-families Herpesviridae,Papillomaviridae
     """
     from virotaxa.catalog.builder import build_catalog, save_catalog
 
@@ -339,12 +362,22 @@ def catalog_build_cmd(
         console.print(f"[red]File not found: {vhdb_file}[/red]")
         raise typer.Exit(1)
 
+    # Parse primate families if provided
+    primate_families_set: set[str] | None = None
+    if primate_families:
+        primate_families_set = {f.strip() for f in primate_families.split(",")}
+
     console.print(f"[blue]Building {mode} catalog...[/blue]")
+    if primate_homologs != "none":
+        families_msg = f" ({', '.join(primate_families_set)})" if primate_families_set else ""
+        console.print(f"[blue]Including {primate_homologs} primate homologs{families_msg}[/blue]")
 
     catalog = build_catalog(
         vhdb_file,
         mode=mode,
         exclude_bacteriophages=exclude_bacteriophages,
+        primate_homologs=primate_homologs,
+        primate_families=primate_families_set,
     )
 
     tsv_path, meta_path = save_catalog(
@@ -353,6 +386,8 @@ def catalog_build_cmd(
         vhdb_path=vhdb_file,
         mode=mode,
         exclude_bacteriophages=exclude_bacteriophages,
+        primate_homologs=primate_homologs,
+        primate_families=primate_families_set,
     )
 
     console.print(f"[green]Built catalog with {len(catalog)} taxa[/green]")

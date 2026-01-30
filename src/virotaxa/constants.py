@@ -110,3 +110,30 @@ NCBI_EUTILS_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
 DEFAULT_BATCH_SIZE = 100
 DEFAULT_DELAY_NO_KEY = 0.4  # 3 requests/second without API key
 DEFAULT_DELAY_WITH_KEY = 0.1  # 10 requests/second with API key
+
+# Primate homolog settings
+# Used to augment clinical catalogs with primate virus homologs
+# to improve capture of high-diversity human viruses (HHV-8, HCMV, EBV, HPV)
+
+# Great ape taxids (closest evolutionary distance to humans)
+CHIMP_TAXID = 9598  # Pan troglodytes
+BONOBO_TAXID = 9597  # Pan paniscus
+GREAT_APE_TAXIDS = {CHIMP_TAXID, BONOBO_TAXID}
+
+# Primate homolog modes
+PRIMATE_MODE_NONE = "none"  # No primate homologs (default)
+PRIMATE_MODE_STRICT = "strict"  # Chimp/bonobo only (+66 viruses)
+PRIMATE_MODE_EXTENDED = "extended"  # All non-human primates (+505 viruses)
+
+VALID_PRIMATE_MODES = {PRIMATE_MODE_NONE, PRIMATE_MODE_STRICT, PRIMATE_MODE_EXTENDED}
+
+# High-diversity families where primate homologs are most valuable
+# These families have significant intra-species strain diversity
+HIGH_DIVERSITY_FAMILIES = {
+    "Herpesviridae",  # HHV-8, HCMV, EBV - strains differ by 20kb+
+    "Orthoherpesviridae",  # Modern herpesvirus taxonomy
+    "Papillomaviridae",  # HPV - 200+ types
+    "Retroviridae",  # HIV - high diversity
+    "Polyomaviridae",  # BK, JC viruses
+    "Adenoviridae",  # Many serotypes
+}

@@ -15,6 +15,7 @@ from virotaxa.constants import (
     BACTERIOPHAGE_FAMILIES,
     HUMAN_TAXID,
     MODE_CLINICAL,
+    PRIMATE_MODE_NONE,
 )
 from virotaxa.vhdb.download import compute_file_hash, get_vhdb_metadata
 
@@ -53,6 +54,8 @@ def generate_metadata(
     source_path: Path,
     mode: str,
     exclude_bacteriophages: bool,
+    primate_homologs: str = PRIMATE_MODE_NONE,
+    primate_families: set[str] | None = None,
     virotaxa_version: str = "0.1.0",
 ) -> dict[str, Any]:
     """Generate metadata for a virus catalog for reproducibility tracking.
@@ -62,6 +65,8 @@ def generate_metadata(
         source_path: Path to the source VHDB file
         mode: Catalog mode used (clinical, pandemic, or mammal)
         exclude_bacteriophages: Whether bacteriophages were excluded
+        primate_homologs: Primate homolog mode ("none", "strict", "extended")
+        primate_families: Families for which primate homologs were included
         virotaxa_version: Version of virotaxa used
 
     Returns:
@@ -93,6 +98,24 @@ def generate_metadata(
         "mammal": "Mammalian hosts only (zoonotic focus)",
     }
 
+    primate_mode_descriptions = {
+        "none": "No primate homologs",
+        "strict": "Chimp/bonobo homologs only",
+        "extended": "All non-human primate homologs",
+    }
+
+    # Build reproducibility command
+    repro_cmd = f"virotaxa catalog build {source_path} --mode {mode} "
+    if exclude_bacteriophages:
+        repro_cmd += "--exclude-bacteriophages "
+    else:
+        repro_cmd += "--include-bacteriophages "
+    if primate_homologs != PRIMATE_MODE_NONE:
+        repro_cmd += f"--primate-homologs {primate_homologs} "
+        if primate_families:
+            repro_cmd += f"--primate-families {','.join(sorted(primate_families))} "
+    repro_cmd += "-o <output.tsv>"
+
     metadata: dict[str, Any] = {
         "_description": "Virotaxa catalog metadata for reproducibility",
         "_version": "1.0",
@@ -112,11 +135,17 @@ def generate_metadata(
             "exclude_bacteriophages": exclude_bacteriophages,
             "human_taxid": HUMAN_TAXID,
             "bacteriophage_families_excluded": len(BACTERIOPHAGE_FAMILIES),
+            "primate_homologs": primate_homologs,
+            "primate_homologs_description": primate_mode_descriptions.get(
+                primate_homologs, "Unknown mode"
+            ),
+            "primate_families": sorted(primate_families) if primate_families else None,
         },
         "filters_applied": {
             "host_filter": "human_only" if mode == MODE_CLINICAL else mode,
             "requires_refseq": True,
             "evidence_priority": ["Literature", "RefSeq", "UniProt"],
+            "primate_homologs_included": primate_homologs != PRIMATE_MODE_NONE,
         },
         "statistics": {
             "total_taxa": len(catalog),
@@ -128,9 +157,7 @@ def generate_metadata(
         "reproducibility": {
             "commands": [
                 f"virotaxa download -o {source_path}",
-                f"virotaxa catalog build {source_path} --mode {mode} "
-                + ("--exclude-bacteriophages" if exclude_bacteriophages else "--include-bacteriophages")
-                + " -o <output.tsv>",
+                repro_cmd,
             ],
             "requirements": [
                 f"virotaxa=={virotaxa_version}",

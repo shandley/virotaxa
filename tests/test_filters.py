@@ -8,6 +8,7 @@ from virotaxa.vhdb.filters import (
     filter_bacteriophages,
     filter_by_host,
     filter_with_refseq,
+    get_primate_homologs,
 )
 
 
@@ -161,3 +162,109 @@ class TestDeduplicateByEvidence:
         result = deduplicate_by_evidence(df, prefer_human=True)
         assert len(result) == 1
         assert result.iloc[0]["host_tax_id"] == 9606
+
+
+class TestGetPrimateHomologs:
+    """Tests for primate homolog filtering."""
+
+    def test_strict_mode_includes_chimp_bonobo(self) -> None:
+        """Strict mode should include only chimp/bonobo hosts."""
+        df = pd.DataFrame({
+            "virus_tax_id": [1, 2, 3, 4],
+            "virus_name": ["Chimp virus", "Bonobo virus", "Human virus", "Macaque virus"],
+            "virus_lineage": [
+                "Viruses; Herpesviridae",
+                "Viruses; Herpesviridae",
+                "Viruses; Herpesviridae",
+                "Viruses; Herpesviridae",
+            ],
+            "host_tax_id": [9598, 9597, 9606, 9544],  # Chimp, Bonobo, Human, Macaque
+            "host_lineage": [
+                "Primates; Pan troglodytes",
+                "Primates; Pan paniscus",
+                "Primates; Homo sapiens",
+                "Primates; Macaca",
+            ],
+            "refseq_id": ["NC_001", "NC_002", "NC_003", "NC_004"],
+        })
+
+        result = get_primate_homologs(df, mode="strict")
+        assert len(result) == 2
+        assert set(result["host_tax_id"]) == {9598, 9597}
+
+    def test_extended_mode_includes_all_primates(self) -> None:
+        """Extended mode should include all non-human primates."""
+        df = pd.DataFrame({
+            "virus_tax_id": [1, 2, 3, 4],
+            "virus_name": ["Chimp virus", "Human virus", "Macaque virus", "Mouse virus"],
+            "virus_lineage": [
+                "Viruses; Herpesviridae",
+                "Viruses; Herpesviridae",
+                "Viruses; Herpesviridae",
+                "Viruses; Herpesviridae",
+            ],
+            "host_tax_id": [9598, 9606, 9544, 10090],
+            "host_lineage": [
+                "Primates; Pan troglodytes",
+                "Primates; Homo sapiens",
+                "Primates; Macaca",
+                "Rodentia; Mus musculus",
+            ],
+            "refseq_id": ["NC_001", "NC_002", "NC_003", "NC_004"],
+        })
+
+        result = get_primate_homologs(df, mode="extended")
+        assert len(result) == 2  # Chimp and Macaque, not Human or Mouse
+        assert 9606 not in result["host_tax_id"].values
+        assert 10090 not in result["host_tax_id"].values
+
+    def test_none_mode_returns_empty(self) -> None:
+        """None mode should return empty DataFrame."""
+        df = pd.DataFrame({
+            "virus_tax_id": [1],
+            "host_tax_id": [9598],
+            "host_lineage": ["Primates; Pan"],
+            "refseq_id": ["NC_001"],
+        })
+
+        result = get_primate_homologs(df, mode="none")
+        assert len(result) == 0
+
+    def test_filters_by_family(self) -> None:
+        """Should filter to specified families."""
+        df = pd.DataFrame({
+            "virus_tax_id": [1, 2],
+            "virus_name": ["Chimp herpes", "Chimp papilloma"],
+            "virus_lineage": [
+                "Viruses; Herpesviridae",
+                "Viruses; Papillomaviridae",
+            ],
+            "host_tax_id": [9598, 9598],
+            "host_lineage": ["Primates; Pan", "Primates; Pan"],
+            "refseq_id": ["NC_001", "NC_002"],
+        })
+
+        result = get_primate_homologs(df, mode="strict", families={"Herpesviridae"})
+        assert len(result) == 1
+        assert result.iloc[0]["virus_name"] == "Chimp herpes"
+
+    def test_requires_refseq(self) -> None:
+        """Should only include entries with RefSeq IDs."""
+        df = pd.DataFrame({
+            "virus_tax_id": [1, 2],
+            "virus_name": ["With RefSeq", "No RefSeq"],
+            "virus_lineage": ["Viruses; Herpesviridae", "Viruses; Herpesviridae"],
+            "host_tax_id": [9598, 9598],
+            "host_lineage": ["Primates; Pan", "Primates; Pan"],
+            "refseq_id": ["NC_001", None],
+        })
+
+        result = get_primate_homologs(df, mode="strict")
+        assert len(result) == 1
+        assert result.iloc[0]["virus_name"] == "With RefSeq"
+
+    def test_invalid_mode_raises_error(self) -> None:
+        """Invalid mode should raise ValueError."""
+        df = pd.DataFrame({"host_tax_id": [9598]})
+        with pytest.raises(ValueError, match="Invalid primate mode"):
+            get_primate_homologs(df, mode="invalid")

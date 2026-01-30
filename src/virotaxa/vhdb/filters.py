@@ -12,11 +12,15 @@ from virotaxa.constants import (
     BACTERIOPHAGE_FAMILIES,
     BACTERIOPHAGE_KEYWORDS,
     EVIDENCE_PRIORITY,
+    GREAT_APE_TAXIDS,
     HUMAN_TAXID,
     MODE_CLINICAL,
     MODE_MAMMAL,
     MODE_PANDEMIC,
+    PRIMATE_MODE_NONE,
+    PRIMATE_MODE_STRICT,
     VALID_MODES,
+    VALID_PRIMATE_MODES,
 )
 
 logger = logging.getLogger(__name__)
@@ -195,5 +199,86 @@ def filter_bacteriophages(
     else:
         filtered = df[phage_mask].copy()
         logger.info(f"Kept {len(filtered)} bacteriophages")
+
+    return filtered
+
+
+def get_primate_homologs(
+    df: pd.DataFrame,
+    mode: str = PRIMATE_MODE_STRICT,
+    families: set[str] | None = None,
+) -> pd.DataFrame:
+    """Get non-human primate virus homologs from VHDB.
+
+    Primate homologs can improve capture of high-diversity human viruses
+    (HHV-8, HCMV, EBV, HPV) by providing additional probe templates that
+    span sequence space between divergent human strains.
+
+    Two modes are available:
+    - strict: Chimp and bonobo only (~66 viruses) - closest evolutionary distance
+    - extended: All non-human primates (~505 viruses) - maximum coverage
+
+    Optionally filter to specific viral families.
+
+    Args:
+        df: Full Virus-Host Database DataFrame
+        mode: "strict" for chimp/bonobo only, "extended" for all primates
+        families: Optional set of viral families to include (e.g., {"Herpesviridae"}).
+                  If None, includes all families.
+
+    Returns:
+        DataFrame of primate virus homologs with RefSeq entries
+
+    Raises:
+        ValueError: If mode is not valid
+
+    Example:
+        >>> # Get all chimp/bonobo viruses
+        >>> homologs = get_primate_homologs(df, mode="strict")
+        >>>
+        >>> # Get only herpesvirus homologs from all primates
+        >>> herpes = get_primate_homologs(df, mode="extended",
+        ...                               families={"Herpesviridae"})
+    """
+    if mode not in VALID_PRIMATE_MODES:
+        raise ValueError(f"Invalid primate mode: {mode}. Must be one of {VALID_PRIMATE_MODES}")
+
+    if mode == PRIMATE_MODE_NONE:
+        return pd.DataFrame(columns=df.columns)
+
+    # Filter by host
+    if mode == PRIMATE_MODE_STRICT:
+        # Great apes only (chimp + bonobo)
+        is_great_ape = df["host_tax_id"].isin(GREAT_APE_TAXIDS)
+        filtered = df[is_great_ape].copy()
+        logger.info(f"Found {len(filtered)} great ape virus entries (strict mode)")
+    else:
+        # All non-human primates
+        is_primate = df["host_lineage"].fillna("").str.contains("Primates", case=False)
+        is_human = df["host_tax_id"] == HUMAN_TAXID
+        filtered = df[is_primate & ~is_human].copy()
+        logger.info(f"Found {len(filtered)} non-human primate virus entries (extended mode)")
+
+    # Require RefSeq
+    has_refseq = filtered["refseq_id"].notna() & (filtered["refseq_id"] != "")
+    filtered = filtered[has_refseq].copy()
+
+    # Filter by families if specified
+    if families:
+        def has_target_family(lineage: str) -> bool:
+            if pd.isna(lineage):
+                return False
+            lineage_lower = lineage.lower()
+            for family in families:
+                if family.lower() in lineage_lower:
+                    return True
+            return False
+
+        family_mask = filtered["virus_lineage"].apply(has_target_family)
+        filtered = filtered[family_mask].copy()
+        logger.info(f"Filtered to {len(filtered)} entries in families: {families}")
+
+    unique_count = filtered["virus_tax_id"].nunique()
+    logger.info(f"Primate homologs: {unique_count} unique viruses with RefSeq")
 
     return filtered
