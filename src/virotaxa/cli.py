@@ -19,9 +19,11 @@ console = Console()
 # Sub-applications
 cache_app = typer.Typer(help="Manage VHDB version cache")
 catalog_app = typer.Typer(help="Build and validate catalogs")
+genome_app = typer.Typer(help="Fetch and manage genome sequences")
 
 app.add_typer(cache_app, name="cache")
 app.add_typer(catalog_app, name="catalog")
+app.add_typer(genome_app, name="genome")
 
 
 # =============================================================================
@@ -402,6 +404,94 @@ def catalog_validate_cmd(
             console.print("[green]Validation PASSED - catalog is fully reproducible[/green]")
     else:
         console.print(f"[red]Validation FAILED with {len(result.errors)} error(s)[/red]")
+        raise typer.Exit(1)
+
+
+# =============================================================================
+# Genome commands
+# =============================================================================
+
+
+@genome_app.command("fetch")
+def genome_fetch_cmd(
+    catalog: Path = typer.Argument(..., help="Path to catalog TSV file"),
+    output: Path = typer.Option(
+        Path("genomes"),
+        "-o", "--output",
+        help="Output directory for FASTA files",
+    ),
+    email: str = typer.Option(
+        ...,
+        "--email",
+        help="Email for NCBI (required by NCBI policy)",
+    ),
+    api_key: str = typer.Option(
+        None,
+        "--api-key",
+        help="NCBI API key (optional, increases rate limit)",
+    ),
+    batch_size: int = typer.Option(
+        100,
+        "--batch-size",
+        help="Number of sequences per batch request",
+    ),
+) -> None:
+    """Fetch genome sequences for all taxa in a catalog.
+
+    Downloads RefSeq genome sequences from NCBI for each taxon in the catalog.
+    Sequences are saved as FASTA files, one per taxon.
+
+    \b
+    Examples:
+      virotaxa genome fetch clinical_catalog.tsv --email user@example.com
+      virotaxa genome fetch catalog.tsv --email user@example.com --api-key KEY -o genomes/
+    """
+    from virotaxa.genome.fetch import fetch_genomes
+    from virotaxa.genome.metadata import save_genome_metadata
+
+    if not catalog.exists():
+        console.print(f"[red]Catalog not found: {catalog}[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[blue]Fetching genomes from catalog: {catalog}[/blue]")
+    console.print(f"Output directory: {output}")
+
+    if api_key:
+        console.print("[dim]Using API key (10 req/s rate limit)[/dim]")
+    else:
+        console.print("[dim]No API key (3 req/s rate limit)[/dim]")
+
+    try:
+        result = fetch_genomes(
+            catalog_path=catalog,
+            output_dir=output,
+            email=email,
+            api_key=api_key,
+            batch_size=batch_size,
+        )
+
+        # Save metadata
+        metadata_path = save_genome_metadata(
+            result=result,
+            catalog_path=catalog,
+            email=email,
+        )
+
+        # Show results
+        console.print()
+        console.print("[green]Fetch complete![/green]")
+        console.print(f"  Taxa: {result.total_taxa}")
+        console.print(f"  Sequences: {result.successful}/{result.total_sequences}")
+
+        if result.failed:
+            console.print(f"  [yellow]Failed: {len(result.failed)}[/yellow]")
+
+        console.print(f"  Files: {len(result.files)}")
+        console.print(f"\n  Output: {output}")
+        console.print(f"  Metadata: {metadata_path}")
+
+    except Exception as e:
+        console.print(f"[red]Fetch failed: {e}[/red]")
         raise typer.Exit(1)
 
 

@@ -104,3 +104,9 @@ VHDB_COLUMNS = [
     "sample_type",
     "source_organism",
 ]
+
+# NCBI E-utilities settings
+NCBI_EUTILS_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
+DEFAULT_BATCH_SIZE = 100
+DEFAULT_DELAY_NO_KEY = 0.4  # 3 requests/second without API key
+DEFAULT_DELAY_WITH_KEY = 0.1  # 10 requests/second with API key

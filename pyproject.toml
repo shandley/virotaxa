@@ -35,6 +35,7 @@ dependencies = [
     "httpx>=0.24",
     "typer>=0.9",
     "rich>=13.0",
+    "biopython>=1.80",
 ]
 
 [project.optional-dependencies]
